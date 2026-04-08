@@ -570,10 +570,9 @@ class ReTextWindow(QMainWindow):
 
     def updateTabTitle(self, ind, tab):
         changed = tab.editBox.document().isModified()
+        title = tab.getBaseName().replace('&', '&&')
         if changed:
-            title = tab.getBaseName() + '*'
-        else:
-            title = tab.getBaseName()
+            title += '*'
         self.tabWidget.setTabText(ind, title)
 
     def tabFileNameChanged(self, tab):
@@ -851,7 +850,8 @@ class ReTextWindow(QMainWindow):
         for f in filesOld:
             if QFile.exists(f):
                 files.append(f)
-                self.recentFilesActions.append(self.act(f, trig=self.openFunction(f)))
+                action = self.act(f.replace('&', '&&'), trig=self.openFunction(f))
+                self.recentFilesActions.append(action)
         globalCache.recentFileList = files
         for action in self.recentFilesActions:
             self.menuRecentFiles.addAction(action)
