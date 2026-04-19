@@ -108,18 +108,25 @@ def getColor(colorName):
     return colorValues[colorName]
 
 def documentIndentMore(document, cursor, globalSettings=globalSettings):
+    if globalSettings.tabInsertsSpaces:
+        indent = ' ' * globalSettings.tabWidth
+    else:
+        indent = '\t'
     if cursor.hasSelection():
         block = document.findBlock(cursor.selectionStart())
         end = document.findBlock(cursor.selectionEnd()).next()
         cursor.beginEditBlock()
         while block != end:
             cursor.setPosition(block.position())
-            if globalSettings.tabInsertsSpaces:
-                cursor.insertText(' ' * globalSettings.tabWidth)
-            else:
-                cursor.insertText('\t')
+            cursor.insertText(indent)
             block = block.next()
         cursor.endEditBlock()
+        return
+    block = document.findBlock(cursor.position())
+    unorderedListPattern = re.compile(r"^\s*[*-] $")
+    if unorderedListPattern.match(block.text()):
+        cursor.setPosition(block.position())
+        cursor.insertText(indent)
     else:
         indent = globalSettings.tabWidth - (cursor.positionInBlock()
             % globalSettings.tabWidth)

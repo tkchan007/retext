@@ -69,6 +69,18 @@ class TestIndentation(unittest.TestCase):
         self.assertEqual('    foo\n    bar\nbaz',
                          self.document.toPlainText())
 
+    def test_indentMoreInList(self):
+        self.document.setPlainText('- one\n- ')
+        cursor = QTextCursor(self.document)
+        cursor.setPosition(8)
+        documentIndentMore(self.document, cursor, self.settings)
+        self.assertEqual('- one\n    - ', self.document.toPlainText())
+
+        self.document.setPlainText('- one\n- ')
+        cursor.setPosition(5)
+        documentIndentMore(self.document, cursor, self.settings)
+        self.assertEqual('- one   \n- ', self.document.toPlainText())
+
     def test_indentLess(self):
         self.document.setPlainText('        foo')
         cursor = QTextCursor(self.document)
