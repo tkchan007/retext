@@ -162,6 +162,9 @@ class ReTextWindow(QMainWindow):
         self.actionReload = self.act(self.tr('Reload'), 'view-refresh',
             lambda: self.currentTab.readTextFromFile())
         self.actionReload.setEnabled(False)
+        self.actionCopyFilePath = self.act(self.tr('Copy file path'), 'edit-copy',
+            self.copyFilePath)
+        self.actionCopyFilePath.setEnabled(False)
         self.actionSave = self.act(self.tr('Save'), 'document-save',
             self.saveFile, shct=QKeySequence.StandardKey.Save)
         self.actionSave.setEnabled(False)
@@ -357,6 +360,7 @@ class ReTextWindow(QMainWindow):
         menuFile.addAction(self.actionShowDirectoryTree)
         menuFile.addAction(self.actionSetEncoding)
         menuFile.addAction(self.actionReload)
+        menuFile.addAction(self.actionCopyFilePath)
         menuFile.addSeparator()
         menuFile.addAction(self.actionSave)
         menuFile.addAction(self.actionSaveAs)
@@ -596,6 +600,7 @@ class ReTextWindow(QMainWindow):
             canReload = bool(tab.fileName) and not tab.autoSaveActive()
             self.actionSetEncoding.setEnabled(canReload)
             self.actionReload.setEnabled(canReload)
+            self.actionCopyFilePath.setEnabled(bool(tab.fileName))
 
     def tabActiveMarkupChanged(self, tab):
         '''
@@ -722,6 +727,11 @@ class ReTextWindow(QMainWindow):
     def enableCopy(self, copymode):
         self.actionCopy.setEnabled(copymode)
         self.actionCut.setEnabled(copymode)
+
+    def copyFilePath(self):
+        if self.currentTab.fileName:
+            filePath = QDir.toNativeSeparators(self.currentTab.fileName)
+            QApplication.instance().clipboard().setText(filePath)
 
     def enableFullScreen(self, yes):
         if yes:
