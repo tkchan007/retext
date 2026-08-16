@@ -11,8 +11,9 @@ jobs:
           - py39-windows
           - py310-pyqt64-ubuntu
           - py311-pyqt65-ubuntu
-          - py312-pyqt67-ubuntu2404
-          - py313-ubuntu
+          - py312-pyqt68-ubuntu2404
+          - py313-pyqt611-ubuntu
+          - py314-ubuntu
         include:
           - environment: py39-pyqt62-ubuntu2204
             python: 3.9
@@ -30,17 +31,21 @@ jobs:
             python: '3.11'
             pyqt: PyQt6~=6.5.0 PyQt6-Qt6~=6.5.0
             platform: ubuntu-latest
-          - environment: py312-pyqt67-ubuntu2404
+          - environment: py312-pyqt68-ubuntu2404
             python: '3.12'
-            pyqt: PyQt6~=6.7.0 PyQt6-Qt6~=6.7.0
+            pyqt: PyQt6~=6.8.0 PyQt6-Qt6~=6.8.0
             platform: ubuntu-24.04
-          - environment: py313-ubuntu
+          - environment: py313-pyqt611-ubuntu
             python: '3.13'
+            pyqt: PyQt6~=6.11.0 PyQt6-Qt6~=6.11.0
+            platform: ubuntu-latest
+          - environment: py314-ubuntu
+            python: '3.14'
             pyqt: PyQt6
             platform: ubuntu-latest
     runs-on: ${{ matrix.platform }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install apt dependencies
         if: ${{ startsWith(matrix.platform, 'ubuntu') }}
         run: |
@@ -48,7 +53,7 @@ jobs:
           sudo apt install libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-cursor0 libxcb-xinerama0
           sudo apt install libegl1 libxkbcommon-x11-0
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
       - name: Install Python dependencies
@@ -63,8 +68,8 @@ jobs:
   ruff:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.x'
       - name: Install ruff
