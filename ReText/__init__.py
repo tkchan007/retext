@@ -56,6 +56,7 @@ configOptions = {
     'directoryPath': expanduser("~"),
     'documentStatsEnabled': False,
     'editorFont': '',
+    'editorScrollBarStep': 20,
     'font': '',
     'handleWebLinks': False,
     'hideToolBar': False,

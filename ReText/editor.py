@@ -195,6 +195,7 @@ class ReTextEdit(QTextEdit):
         if globalSettings.useFakeVim:
             self.installFakeVimHandler()
         self.mimeDatabase = QMimeDatabase()
+        self.verticalScrollBar().setSingleStep(globalSettings.editorScrollBarStep)
 
     def setWrapModeAndWidth(self):
         if globalSettings.rightMarginWrap:
