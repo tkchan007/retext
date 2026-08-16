@@ -186,8 +186,9 @@ class ReTextWebEnginePreview(QWebEngineView):
         settings = self.settings()
         settings.setFontFamily(QWebEngineSettings.FontFamily.StandardFont,
                                font.family())
-        settings.setFontSize(QWebEngineSettings.FontSize.DefaultFontSize,
-                             QFontInfo(font).pixelSize())
+        pixelSize = QFontInfo(font).pixelSize()
+        settings.setFontSize(QWebEngineSettings.FontSize.DefaultFontSize, pixelSize)
+        settings.setFontSize(QWebEngineSettings.FontSize.DefaultFixedFontSize, pixelSize)
 
     def setHtml(self, html, baseUrl):
         # A hack to prevent WebEngine from stealing the focus
