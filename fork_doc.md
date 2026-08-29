@@ -19,6 +19,24 @@ instead of loading fresh code — kill the existing PID first (`pgrep -af
 ReText"`, which matches its own wrapping shell command and kills the wrong
 thing) before relaunching after any code change.
 
+**To run this in place of the system-installed `retext` package** (so the
+normal `retext` command, and GUI launchers/"Open With", use this checkout):
+```bash
+./install/setup-user-launcher.sh
+```
+Installs a `~/.local/bin/retext` wrapper (ahead of `/usr/bin/retext` on
+`PATH`) plus a user-level `.desktop` file that shadows the system one --
+both user-level only, no sudo, safe to re-run after moving the checkout.
+**Leave the system `retext` apt package installed** even though it becomes
+unused: this fork doesn't vendor PyQt6/WebEngine/the `markups` library, it
+reuses the system copies that the `retext` package pulled in as
+dependencies. Confirmed via `apt-get remove -s retext` that those
+dependencies are marked "no longer required" the moment the package is
+removed -- a later `apt autoremove` would then silently take them (and
+this fork) down with it. On a machine that's never had `retext` installed,
+run `sudo apt install retext` first (for the dependencies), *then* the
+setup script above.
+
 **One-time setup needed on a fresh checkout/session:** WebEngine rendering
 (everything below depends on it) is off by default and there's no config
 file yet on a fresh profile. Turn it on via **Edit > Use WebEngine (Chromium)
