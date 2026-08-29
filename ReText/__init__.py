@@ -47,6 +47,7 @@ def getBundledIcon(iconName):
 
 
 configOptions = {
+    'activePrintPresetId': '',
     'appStyleSheet': '',
     'autoSave': False,
     'defaultCodec': '',

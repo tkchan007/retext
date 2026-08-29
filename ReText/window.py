@@ -20,6 +20,7 @@ import configparser
 import os
 import shlex
 import sys
+import tempfile
 import traceback
 import warnings
 from subprocess import Popen
@@ -29,6 +30,8 @@ import markups
 from ReText import app_version, getBundledIcon, globalCache, globalSettings
 from ReText.config import ConfigDialog, setIconThemeFromSettings
 from ReText.dialogs import EncodingDialog, HtmlDialog, LocaleDialog
+from ReText.printpresetdialog import PrintPresetDialog
+from ReText.printpresets import DEFAULT_PRESET, loadPreset
 from ReText.filesystemmodel import ReTextFileSystemModel
 from ReText.tab import (
     PreviewDisabled,
@@ -49,9 +52,15 @@ try:
 except ImportError:
     enchant = None
 
+try:
+    from PyQt6.QtWebEngineCore import QWebEnginePage
+except ImportError:
+    QWebEnginePage = None
+
 from PyQt6.QtCore import (
     QByteArray,
     QDir,
+    QEventLoop,
     QFile,
     QFileInfo,
     QFileSystemWatcher,
@@ -68,6 +77,7 @@ from PyQt6.QtGui import (
     QActionGroup,
     QColor,
     QDesktopServices,
+    QFont,
     QIcon,
     QKeySequence,
     QPageLayout,
@@ -200,6 +210,8 @@ class ReTextWindow(QMainWindow):
             trig=self.changeEditorFont)
         self.actionChangePreviewFont = self.act(self.tr('Change preview font'),
             trig=self.changePreviewFont)
+        self.actionPrintPresets = self.act(self.tr('Print layout presets...'),
+            trig=self.showPrintPresetDialog)
         self.actionSearch = self.act(self.tr('Find text'), 'edit-find',
             self.search, shct=QKeySequence.StandardKey.Find)
         self.actionGoToLine = self.act(self.tr('Go to line'),
@@ -401,6 +413,7 @@ class ReTextWindow(QMainWindow):
         menuEdit.addAction(self.actionGoToLine)
         menuEdit.addAction(self.actionChangeEditorFont)
         menuEdit.addAction(self.actionChangePreviewFont)
+        menuEdit.addAction(self.actionPrintPresets)
         menuEdit.addSeparator()
         if len(availableMarkups) > 1:
             self.menuMode = menuEdit.addMenu(self.tr('Default markup'))
@@ -704,6 +717,14 @@ class ReTextWindow(QMainWindow):
         globalSettings.font = font.toString()
         for tab in self.iterateTabs():
             tab.triggerPreviewUpdate()
+
+    def showPrintPresetDialog(self):
+        # Only affects Print/Print Preview/Export to PDF output, not the
+        # on-screen live preview pane -- applied at render time in
+        # buildPrintHtml()/renderHtmlToPdf(), not to any already-displayed
+        # widget.
+        dlg = PrintPresetDialog(self)
+        dlg.exec()
 
     def preview(self, viewmode):
         self.currentTab.previewState = viewmode * 2
@@ -1113,6 +1134,100 @@ class ReTextWindow(QMainWindow):
         if sizeId is not None:
             return QPageSize(sizeId)
 
+    def getActivePrintPreset(self):
+        """ Returns the currently active print layout preset (margins +
+        print font) as a dict, falling back to DEFAULT_PRESET if none is
+        selected or the selected one can no longer be loaded (e.g. its
+        file was deleted outside the app).
+        """
+        presetId = globalSettings.activePrintPresetId
+        if presetId:
+            preset = loadPreset(presetId)
+            if preset is not None:
+                return preset
+        return dict(DEFAULT_PRESET)
+
+    def buildPrintHtml(self, htmltext):
+        """ Returns `htmltext` with a font-family/size override injected, if
+        the active print preset has one configured. Deliberately
+        independent of the live preview pane's own font setting -- this
+        only affects Print/Print Preview/Export to PDF output.
+        """
+        fontString = self.getActivePrintPreset()['printFont']
+        if not fontString:
+            return htmltext
+        font = QFont()
+        font.fromString(fontString)
+        rules = f"font-family: '{font.family()}';"
+        if font.pointSize() > 0:
+            rules += f" font-size: {font.pointSize()}pt;"
+        override = f"<style>html, body {{ {rules} }}</style>"
+        if '</head>' in htmltext:
+            return htmltext.replace('</head>', override + '</head>', 1)
+        return override + htmltext
+
+    def renderHtmlToPdf(self, html, baseUrl, path):
+        """ Renders `html` to a PDF file at `path`, using a private,
+        invisible WebEngine page -- independent of whatever the live
+        preview pane currently shows, and independent of its (possibly
+        never-triggered) async conversion pipeline. Blocks until the file
+        is written. Returns True on success. Only valid when
+        globalSettings.useWebEngine (QWebEnginePage is not None).
+        """
+        pageSize = self.getPageSizeByName(globalSettings.paperSize)
+        if pageSize is None:
+            pageSize = QPageSize(QPageSize.PageSizeId.A4)
+        preset = self.getActivePrintPreset()
+        margins = QMarginsF(
+            preset['marginLeft'], preset['marginTop'],
+            preset['marginRight'], preset['marginBottom'],
+        )
+        layout = QPageLayout(
+            pageSize,
+            QPageLayout.Orientation.Portrait,
+            margins,
+            QPageLayout.Unit.Inch,
+        )
+        page = QWebEnginePage()
+
+        loadLoop = QEventLoop()
+        loadOk = False
+
+        def onLoadFinished(ok):
+            nonlocal loadOk
+            loadOk = ok
+            loadLoop.quit()
+
+        page.loadFinished.connect(onLoadFinished)
+        try:
+            page.setHtml(html, baseUrl)
+            loadLoop.exec()
+        finally:
+            page.loadFinished.disconnect(onLoadFinished)
+        if not loadOk:
+            return False
+
+        printLoop = QEventLoop()
+        printOk = False
+
+        def onPrintFinished(finishedPath, ok):
+            nonlocal printOk
+            printOk = ok
+            printLoop.quit()
+
+        page.pdfPrintingFinished.connect(onPrintFinished)
+        try:
+            page.printToPdf(path, layout)
+            printLoop.exec()
+        finally:
+            page.pdfPrintingFinished.disconnect(onPrintFinished)
+        return printOk
+
+    def getBaseUrlForCurrentTab(self):
+        if self.currentTab.fileName:
+            return QUrl.fromLocalFile(self.currentTab.fileName)
+        return QUrl.fromLocalFile(QDir.currentPath())
+
     def savePdf(self):
         fileName = QFileDialog.getSaveFileName(self,
             self.tr("Export document to PDF"),
@@ -1123,17 +1238,10 @@ class ReTextWindow(QMainWindow):
                 fileName += ".pdf"
             title, htmltext, preview = self.currentTab.getDocumentForExport()
             if globalSettings.useWebEngine:
-                pageSize = self.getPageSizeByName(globalSettings.paperSize)
-                if pageSize is None:
-                    pageSize = QPageSize(QPageSize.PageSizeId.A4)
-                margins = QMarginsF(20, 20, 13, 20)  # left, top, right, bottom (in millimeters)
-                layout = QPageLayout(
-                    pageSize,
-                    QPageLayout.Orientation.Portrait,
-                    margins,
-                    QPageLayout.Unit.Millimeter,
-                )
-                preview.page().printToPdf(fileName, layout)
+                html = self.buildPrintHtml(htmltext)
+                baseUrl = self.getBaseUrlForCurrentTab()
+                if not self.renderHtmlToPdf(html, baseUrl, fileName):
+                    self.printError()
                 return
             printer = self.standardPrinter(title)
             printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
@@ -1147,20 +1255,52 @@ class ReTextWindow(QMainWindow):
         printer = self.standardPrinter(title)
         dlg = QPrintDialog(printer, self)
         dlg.setWindowTitle(self.tr("Print document"))
-        if (dlg.exec() == QDialog.DialogCode.Accepted):
-            document = self.getDocumentForPrint(title, htmltext, preview)
-            if document is not None:
-                document.print(printer)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        if globalSettings.useWebEngine:
+            fd, path = tempfile.mkstemp(prefix='retext-print-', suffix='.pdf')
+            os.close(fd)
+            try:
+                html = self.buildPrintHtml(htmltext)
+                baseUrl = self.getBaseUrlForCurrentTab()
+                if not self.renderHtmlToPdf(html, baseUrl, path):
+                    self.printError()
+                    return
+                command = ['lp', '-d', printer.printerName(),
+                    '-n', str(printer.copyCount()), path]
+                if Popen(command).wait() != 0:
+                    QMessageBox.warning(self, '',
+                        self.tr('Failed to send the document to the printer.'))
+            finally:
+                os.remove(path)
+            return
+        document = self.getDocumentForPrint(title, htmltext, preview)
+        if document is not None:
+            document.print(printer)
 
     def printPreview(self):
         title, htmltext, preview = self.currentTab.getDocumentForExport()
+        if globalSettings.useWebEngine:
+            fd, path = tempfile.mkstemp(prefix='retext-preview-', suffix='.pdf')
+            os.close(fd)
+            html = self.buildPrintHtml(htmltext)
+            baseUrl = self.getBaseUrlForCurrentTab()
+            if self.renderHtmlToPdf(html, baseUrl, path):
+                # Intentionally not removing the temp file here: the external
+                # viewer needs it to stay readable, and there's no reliable
+                # signal for when the viewer is done with it.
+                QDesktopServices.openUrl(QUrl.fromLocalFile(path))
+            else:
+                os.remove(path)
+                self.printError()
+            return
         document = self.getDocumentForPrint(title, htmltext, preview)
         if document is None:
             return
         printer = self.standardPrinter(title)
-        preview = QPrintPreviewDialog(printer, self)
-        preview.paintRequested.connect(document.print)
-        preview.exec()
+        dlg = QPrintPreviewDialog(printer, self)
+        dlg.paintRequested.connect(document.print)
+        dlg.exec()
 
     def runExtensionCommand(self, command, filefilter, defaultext):
         of = ('%of' in command)
