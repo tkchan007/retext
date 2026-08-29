@@ -37,6 +37,25 @@ this fork) down with it. On a machine that's never had `retext` installed,
 run `sudo apt install retext` first (for the dependencies), *then* the
 setup script above.
 
+**After running the setup script, verify `~/.local/bin` is actually on
+`PATH` in a real new terminal** (not just a login shell) before assuming
+`retext` resolves to this fork:
+```bash
+grep "local/bin" ~/.bashrc
+```
+Ubuntu's default `~/.profile` adds `~/.local/bin` to `PATH`, but `~/.profile`
+is only sourced by *login* shells -- most terminal windows start plain
+interactive shells that source `~/.bashrc` instead, which does **not**
+have the same logic by default. Hit this exact issue during setup: `retext`
+silently resolved to the system package in a normal new terminal despite
+the wrapper being installed correctly, with no error to indicate why. If
+the grep above comes back empty, append this to `~/.bashrc`:
+```bash
+if [ -d "$HOME/.local/bin" ] ; then
+    PATH="$HOME/.local/bin:$PATH"
+fi
+```
+
 **One-time setup needed on a fresh checkout/session:** WebEngine rendering
 (everything below depends on it) is off by default and there's no config
 file yet on a fresh profile. Turn it on via **Edit > Use WebEngine (Chromium)
